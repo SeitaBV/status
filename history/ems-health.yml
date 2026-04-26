@@ -1,7 +1,7 @@
 url: https://ems.seita.energy/api/v3_0/health/ready
 status: up
 code: 200
-responseTime: 109
-lastUpdated: 2026-04-25T23:16:05.225Z
+responseTime: 158
+lastUpdated: 2026-04-26T23:17:03.966Z
 startTime: 2026-04-22T16:51:51.254Z
 generator: Upptime <https://github.com/upptime/upptime>
