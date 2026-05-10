@@ -22,17 +22,17 @@
     "url": "https://ems.seita.energy/api/v3_0/health/ready",
     "icon": "https://icons.duckduckgo.com/ip3/ems.seita.energy.ico",
     "slug": "ems-health",
-    "status": "up",
+    "status": "down",
     "uptime": "99.89%",
     "uptimeDay": "100.00%",
     "uptimeWeek": "100.00%",
     "uptimeMonth": "99.89%",
     "uptimeYear": "99.89%",
-    "time": 281,
-    "timeDay": 701,
-    "timeWeek": 526,
-    "timeMonth": 281,
-    "timeYear": 281,
+    "time": 291,
+    "timeDay": 610,
+    "timeWeek": 525,
+    "timeMonth": 291,
+    "timeYear": 291,
     "dailyMinutesDown": {
       "2026-04-23": 27
     }
