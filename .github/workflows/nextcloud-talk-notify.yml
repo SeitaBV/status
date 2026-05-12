@@ -2,21 +2,65 @@ name: Nextcloud Talk Notifications
 
 on:
   issues:
-    types: [opened, closed]
+    types:
+      - opened
+      - closed
+      - labeled
+      - unlabeled
 
 jobs:
   notify:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Determine message
+      - name: Detect maintenance issue
+        id: maintenance
+        run: |
+          LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
+
+          if echo "$LABELS" | grep -qi maintenance; then
+            echo "is_maintenance=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_maintenance=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build notification message
         id: msg
         run: |
-          if [ "${{ github.event.action }}" = "opened" ]; then
-            echo "message=🟥 DOWN: ${{ github.event.issue.title }} ${{ github.event.issue.html_url }}" >> $GITHUB_OUTPUT
+          TITLE="${{ github.event.issue.title }}"
+          URL="${{ github.event.issue.html_url }}"
+
+          if [ "${{ steps.maintenance.outputs.is_maintenance }}" = "true" ]; then
+
+            if [ "${{ github.event.action }}" = "opened" ]; then
+              MESSAGE="🟦 PLANNED MAINTENANCE\n${TITLE}\n${URL}"
+
+            elif [ "${{ github.event.action }}" = "closed" ]; then
+              MESSAGE="🟨 MAINTENANCE COMPLETED\n${TITLE}"
+
+            else
+              MESSAGE="🟦 MAINTENANCE UPDATE\n${TITLE}\n${URL}"
+            fi
+
           else
-            echo "message=🟩 RECOVERED: ${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+
+            if [ "${{ github.event.action }}" = "opened" ]; then
+              MESSAGE="🟥 SERVICE DOWN\n${TITLE}\n${URL}"
+
+            elif [ "${{ github.event.action }}" = "closed" ]; then
+              MESSAGE="🟩 SERVICE RECOVERED\n${TITLE}"
+
+            else
+              MESSAGE="ℹ️ INCIDENT UPDATE\n${TITLE}\n${URL}"
+            fi
+
           fi
+
+          {
+            echo 'message<<EOF'
+            echo -e "$MESSAGE"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
       - name: Send to Nextcloud Talk
         run: |
