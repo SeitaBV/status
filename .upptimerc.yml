@@ -28,4 +28,4 @@ status-website:
       href: https://github.com/$OWNER/$REPO
 
 i18n:
-  footer: [Seita Energy Flexibility](https://seita.nl) delivers behind-the-meter orchestration for energy assets, powewred by their open-source platform [FlexMeasures](https://flexmeasures.io).
+  footer: We are [Seita Energy Flexibility](https://seita.nl). We deliver behind-the-meter orchestration for energy assets, powered by our open-source platform [FlexMeasures](https://flexmeasures.io).
