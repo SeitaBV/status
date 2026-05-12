@@ -1,0 +1,28 @@
+name: Nextcloud Talk Notifications
+
+on:
+  issues:
+    types: [opened, closed]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Determine message
+        id: msg
+        run: |
+          if [ "${{ github.event.action }}" = "opened" ]; then
+            echo "message=🟥 DOWN: ${{ github.event.issue.title }} ${{ github.event.issue.html_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "message=🟩 RECOVERED: ${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send to Nextcloud Talk
+        run: |
+          curl -X POST \
+            "${{ secrets.NEXTCLOUD_URL }}/ocs/v2.php/apps/spreed/api/v4/chat/${{ secrets.NEXTCLOUD_TALK_TOKEN }}/message" \
+            -u "${{ secrets.NEXTCLOUD_USER }}:${{ secrets.NEXTCLOUD_APP_PASSWORD }}" \
+            -H "OCS-APIRequest: true" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg msg "${{ steps.msg.outputs.message }}" '{message: $msg}')"
