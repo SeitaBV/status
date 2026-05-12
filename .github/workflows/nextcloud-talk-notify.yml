@@ -15,9 +15,9 @@ jobs:
     steps:
       - name: Detect maintenance issue
         id: maintenance
+        env:
+          LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
         run: |
-          LABELS='${{ toJson(github.event.issue.labels.*.name) }}'
-
           if echo "$LABELS" | grep -qi maintenance; then
             echo "is_maintenance=true" >> $GITHUB_OUTPUT
           else
@@ -26,47 +26,56 @@ jobs:
 
       - name: Build notification message
         id: msg
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ACTION: ${{ github.event.action }}
+          IS_MAINTENANCE: ${{ steps.maintenance.outputs.is_maintenance }}
         run: |
-          TITLE="${{ github.event.issue.title }}"
-          URL="${{ github.event.issue.html_url }}"
+          if [ "$IS_MAINTENANCE" = "true" ]; then
 
-          if [ "${{ steps.maintenance.outputs.is_maintenance }}" = "true" ]; then
+            if [ "$ACTION" = "opened" ]; then
+              MESSAGE="🟦 PLANNED MAINTENANCE\n${ISSUE_TITLE}\n${ISSUE_URL}"
 
-            if [ "${{ github.event.action }}" = "opened" ]; then
-              MESSAGE="🟦 PLANNED MAINTENANCE\n${TITLE}\n${URL}"
-
-            elif [ "${{ github.event.action }}" = "closed" ]; then
-              MESSAGE="🟨 MAINTENANCE COMPLETED\n${TITLE}"
+            elif [ "$ACTION" = "closed" ]; then
+              MESSAGE="🟨 MAINTENANCE COMPLETED\n${ISSUE_TITLE}"
 
             else
-              MESSAGE="🟦 MAINTENANCE UPDATE\n${TITLE}\n${URL}"
+              MESSAGE="🟦 MAINTENANCE UPDATE\n${ISSUE_TITLE}\n${ISSUE_URL}"
             fi
 
           else
 
-            if [ "${{ github.event.action }}" = "opened" ]; then
-              MESSAGE="🟥 SERVICE DOWN\n${TITLE}\n${URL}"
+            if [ "$ACTION" = "opened" ]; then
+              MESSAGE="🟥 SERVICE DOWN\n${ISSUE_TITLE}\n${ISSUE_URL}"
 
-            elif [ "${{ github.event.action }}" = "closed" ]; then
-              MESSAGE="🟩 SERVICE RECOVERED\n${TITLE}"
+            elif [ "$ACTION" = "closed" ]; then
+              MESSAGE="🟩 SERVICE RECOVERED\n${ISSUE_TITLE}"
 
             else
-              MESSAGE="ℹ️ INCIDENT UPDATE\n${TITLE}\n${URL}"
+              MESSAGE="ℹ️ INCIDENT UPDATE\n${ISSUE_TITLE}\n${ISSUE_URL}"
             fi
 
           fi
 
           {
             echo 'message<<EOF'
-            echo -e "$MESSAGE"
+            printf '%b\n' "$MESSAGE"
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
       - name: Send to Nextcloud Talk
+        env:
+          NEXTCLOUD_URL: ${{ secrets.NEXTCLOUD_URL }}
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_APP_PASSWORD: ${{ secrets.NEXTCLOUD_APP_PASSWORD }}
+          NEXTCLOUD_TALK_TOKEN: ${{ secrets.NEXTCLOUD_TALK_TOKEN }}
+          MSG: ${{ steps.msg.outputs.message }}
         run: |
-          curl -X POST \
-            "${{ secrets.NEXTCLOUD_URL }}/ocs/v2.php/apps/spreed/api/v4/chat/${{ secrets.NEXTCLOUD_TALK_TOKEN }}/message" \
-            -u "${{ secrets.NEXTCLOUD_USER }}:${{ secrets.NEXTCLOUD_APP_PASSWORD }}" \
+          curl -f -X POST \
+            "${NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/${NEXTCLOUD_TALK_TOKEN}" \
+            -u "${NEXTCLOUD_USER}:${NEXTCLOUD_APP_PASSWORD}" \
             -H "OCS-APIRequest: true" \
+            -H "Accept: application/json" \
             -H "Content-Type: application/json" \
-            --data "$(jq -n --arg msg "${{ steps.msg.outputs.message }}" '{message: $msg}')"
+            --data "$(jq -n --arg msg "$MSG" '{message: $msg}')"
