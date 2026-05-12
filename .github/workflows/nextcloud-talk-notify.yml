@@ -1,0 +1,81 @@
+name: Nextcloud Talk Notifications
+
+on:
+  issues:
+    types:
+      - opened
+      - closed
+      - labeled
+      - unlabeled
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Detect maintenance issue
+        id: maintenance
+        env:
+          LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -qi maintenance; then
+            echo "is_maintenance=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_maintenance=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build notification message
+        id: msg
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ACTION: ${{ github.event.action }}
+          IS_MAINTENANCE: ${{ steps.maintenance.outputs.is_maintenance }}
+        run: |
+          if [ "$IS_MAINTENANCE" = "true" ]; then
+
+            if [ "$ACTION" = "opened" ]; then
+              MESSAGE="🟦 PLANNED MAINTENANCE\n${ISSUE_TITLE}\n${ISSUE_URL}"
+
+            elif [ "$ACTION" = "closed" ]; then
+              MESSAGE="🟨 MAINTENANCE COMPLETED\n${ISSUE_TITLE}"
+
+            else
+              MESSAGE="🟦 MAINTENANCE UPDATE\n${ISSUE_TITLE}\n${ISSUE_URL}"
+            fi
+
+          else
+
+            if [ "$ACTION" = "opened" ]; then
+              MESSAGE="🟥 SERVICE DOWN\n${ISSUE_TITLE}\n${ISSUE_URL}"
+
+            elif [ "$ACTION" = "closed" ]; then
+              MESSAGE="🟩 SERVICE RECOVERED\n${ISSUE_TITLE}"
+
+            else
+              MESSAGE="ℹ️ INCIDENT UPDATE\n${ISSUE_TITLE}\n${ISSUE_URL}"
+            fi
+
+          fi
+
+          {
+            echo 'message<<EOF'
+            printf '%b\n' "$MESSAGE"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Send to Nextcloud Talk
+        env:
+          NEXTCLOUD_URL: ${{ secrets.NEXTCLOUD_URL }}
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_APP_PASSWORD: ${{ secrets.NEXTCLOUD_APP_PASSWORD }}
+          NEXTCLOUD_TALK_TOKEN: ${{ secrets.NEXTCLOUD_TALK_TOKEN }}
+          MSG: ${{ steps.msg.outputs.message }}
+        run: |
+          curl -f -X POST \
+            "${NEXTCLOUD_URL}/ocs/v2.php/apps/spreed/api/v1/chat/${NEXTCLOUD_TALK_TOKEN}" \
+            -u "${NEXTCLOUD_USER}:${NEXTCLOUD_APP_PASSWORD}" \
+            -H "OCS-APIRequest: true" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg msg "$MSG" '{message: $msg}')"
