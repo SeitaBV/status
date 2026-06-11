@@ -3,10 +3,10 @@ name: Sync Maintenance Issues to Nextcloud Calendar
 on:
   issues:
     types:
-    - opened
-    - edited
-    - reopened
-    - closed
+      - opened
+      - edited
+      - reopened
+      - closed
 
 jobs:
   sync-calendar:
@@ -149,24 +149,28 @@ jobs:
 
           now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-          with open("maintenance.ics", "w") as f:
-              f.write(
-                  f"""BEGIN:VCALENDAR
-                  VERSION:2.0
-                  PRODID:-//Seita//Maintenance//EN
-                  BEGIN:VEVENT
-                  UID:{os.environ["REPOSITORY"].replace("/", "-")}-issue-{os.environ["ISSUE_NUMBER"]}
-                  DTSTAMP:{now}
-                  DTSTART:{utc(os.environ["START"])}
-                  DTEND:{utc(os.environ["END"])}
-                  SUMMARY:{ical_escape(title)}
-                  DESCRIPTION:{ical_escape(description)}
-                  STATUS:{status}
-                  SEQUENCE:{sequence}
-                  END:VEVENT
-                  END:VCALENDAR
-                  """
-              )
+          ical = "\r\n".join(
+              [
+                  "BEGIN:VCALENDAR",
+                  "VERSION:2.0",
+                  "PRODID:-//Seita//Maintenance//EN",
+                  "BEGIN:VEVENT",
+                  f"UID:{os.environ['REPOSITORY'].replace('/', '-')}-issue-{os.environ['ISSUE_NUMBER']}",
+                  f"DTSTAMP:{now}",
+                  f"DTSTART:{utc(os.environ['START'])}",
+                  f"DTEND:{utc(os.environ['END'])}",
+                  f"SUMMARY:{ical_escape(title)}",
+                  f"DESCRIPTION:{ical_escape(description)}",
+                  f"STATUS:{status}",
+                  f"SEQUENCE:{sequence}",
+                  "END:VEVENT",
+                  "END:VCALENDAR",
+                  "",
+              ]
+          )
+
+          with open("maintenance.ics", "w", newline="") as f:
+              f.write(ical)
           PY
 
       - name: Upload to Nextcloud
