@@ -1,0 +1,186 @@
+name: Sync Maintenance Issues to Nextcloud Calendar
+
+on:
+  issues:
+    types:
+    - opened
+    - edited
+    - reopened
+    - closed
+
+jobs:
+  sync-calendar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Detect maintenance issue
+        id: maintenance
+        env:
+          LABELS: ${{ toJson(github.event.issue.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -qi maintenance; then
+            echo "is_maintenance=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_maintenance=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract and normalize issue data
+        if: steps.maintenance.outputs.is_maintenance == 'true'
+        id: event
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          UPDATED_AT: ${{ github.event.issue.updated_at }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          python <<'PY'
+          import os
+          import re
+
+          body = os.environ["ISSUE_BODY"]
+          title = os.environ["ISSUE_TITLE"]
+
+          start_match = re.search(
+              r"start:\s*([^\r\n]+)",
+              body,
+              re.IGNORECASE,
+          )
+          end_match = re.search(
+              r"end:\s*([^\r\n]+)",
+              body,
+              re.IGNORECASE,
+          )
+
+          if not start_match:
+              raise RuntimeError("Could not find start timestamp")
+
+          if not end_match:
+              raise RuntimeError("Could not find end timestamp")
+
+          title = re.sub(
+              r"^\[scheduled\s+maintenance\]\s*",
+              "",
+              title,
+              flags=re.IGNORECASE,
+          )
+
+          description = re.sub(
+              r"<!--.*?-->",
+              "",
+              body,
+              flags=re.DOTALL,
+          )
+
+          description = re.sub(
+              r"^\*\*Additional context\*\*\s*",
+              "",
+              description,
+              flags=re.IGNORECASE | re.MULTILINE,
+          )
+
+          description = description.strip()
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              print(f"start={start_match.group(1).strip()}", file=f)
+              print(f"end={end_match.group(1).strip()}", file=f)
+
+              print("title<<EOF", file=f)
+              print(title, file=f)
+              print("EOF", file=f)
+
+              print("description<<EOF", file=f)
+              print(description, file=f)
+              print("EOF", file=f)
+          PY
+
+      - name: Generate ICS
+        if: steps.maintenance.outputs.is_maintenance == 'true'
+        env:
+          TITLE: ${{ steps.event.outputs.title }}
+          DESCRIPTION: ${{ steps.event.outputs.description }}
+          START: ${{ steps.event.outputs.start }}
+          END: ${{ steps.event.outputs.end }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+          UPDATED_AT: ${{ github.event.issue.updated_at }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          python <<'PY'
+          import hashlib
+          import os
+          from datetime import datetime, timezone
+
+          def parse_iso(value):
+              return datetime.fromisoformat(value)
+
+          def utc(value):
+              return parse_iso(value).astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+          def ical_escape(text):
+              return (
+                  text.replace("\\", "\\\\")
+                      .replace(";", "\\;")
+                      .replace(",", "\\,")
+                      .replace("\n", "\\n")
+              )
+
+          title = os.environ["TITLE"]
+          description = (
+              os.environ["DESCRIPTION"]
+              + "\n\nIssue: "
+              + os.environ["ISSUE_URL"]
+          )
+
+          status = (
+              "CANCELLED"
+              if os.environ["ACTION"] == "closed"
+              else "CONFIRMED"
+          )
+
+          sequence = int(
+              hashlib.sha1(
+                  os.environ["UPDATED_AT"].encode()
+              ).hexdigest()[:8],
+              16,
+          )
+
+          now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+          with open("maintenance.ics", "w") as f:
+              f.write(
+                  f"""BEGIN:VCALENDAR
+                  VERSION:2.0
+                  PRODID:-//Seita//Maintenance//EN
+                  BEGIN:VEVENT
+                  UID:{os.environ["REPOSITORY"].replace("/", "-")}-issue-{os.environ["ISSUE_NUMBER"]}
+                  DTSTAMP:{now}
+                  DTSTART:{utc(os.environ["START"])}
+                  DTEND:{utc(os.environ["END"])}
+                  SUMMARY:{ical_escape(title)}
+                  DESCRIPTION:{ical_escape(description)}
+                  STATUS:{status}
+                  SEQUENCE:{sequence}
+                  END:VEVENT
+                  END:VCALENDAR
+                  """
+              )
+          PY
+
+      - name: Upload to Nextcloud
+        if: steps.maintenance.outputs.is_maintenance == 'true'
+        env:
+          NEXTCLOUD_URL: ${{ secrets.NEXTCLOUD_URL }}
+          NEXTCLOUD_USER: ${{ secrets.NEXTCLOUD_USER }}
+          NEXTCLOUD_APP_PASSWORD: ${{ secrets.NEXTCLOUD_APP_PASSWORD }}
+          CALENDAR: ${{ secrets.NEXTCLOUD_SERVER_MAINTENANCE_CALENDAR }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          curl --fail \
+            --request PUT \
+            --user "${NEXTCLOUD_USER}:${NEXTCLOUD_APP_PASSWORD}" \
+            --header "Content-Type: text/calendar; charset=utf-8" \
+            --data-binary @maintenance.ics \
+            "${NEXTCLOUD_URL}/remote.php/dav/calendars/${NEXTCLOUD_USER}/${CALENDAR}/maintenance-${ISSUE_NUMBER}.ics"
