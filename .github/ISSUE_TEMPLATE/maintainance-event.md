@@ -1,7 +1,7 @@
 ---
 name: Maintenance Event
 about: Schedule a work window
-title: "[Scheduled Maintenance] Upgrade ems.seita.energy to v0.x.x"
+title: "[Scheduled Maintenance] Upgrade ems.seita.energy to v1.x.x"
 labels: maintenance
 assignees: 'Flix6x'
 
@@ -14,4 +14,4 @@ expectedDown: ems-ping, ems-health
 -->
 
 **Additional context**
-Patch/Minor upgrade from v0.x.x to v0.x.x. See [our changelog](https://flexmeasures.readthedocs.io/latest/changelog.html) for the changes.
+Patch/Minor upgrade from v1.x.x to v1.x.x. See [our changelog](https://flexmeasures.readthedocs.io/latest/changelog.html) for the changes.
