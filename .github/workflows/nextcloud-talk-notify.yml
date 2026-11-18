@@ -5,8 +5,8 @@ on:
     types:
       - opened
       - closed
-      - labeled
-      - unlabeled
+      # Not labeled/unlabeled: labels applied at creation fire a separate labeled event,
+      # which duplicated every new maintenance notification.
 
 jobs:
   notify:
